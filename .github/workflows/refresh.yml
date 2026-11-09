@@ -1,0 +1,45 @@
+name: Refresh FLRA decisions
+
+# Daily 11:05 UTC: read the first 5 pages of each FLRA listing (10 requests, 2 seconds apart), add new
+# decisions to the Hugging Face tables, upload only if something was added. Needs the HF_TOKEN secret
+# (write access to abigailhaddad/flra-decisions). A failed run emails the owner.
+
+on:
+  schedule:
+    - cron: "5 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
+      - run: python src/refresh.py
+
+      # GitHub disables scheduled workflows in a public repo after 60 days with no commits.
+      - name: Keepalive commit
+        if: ${{ always() }}
+        run: |
+          age=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "newest commit is $age days old"
+          if [ "$age" -ge 45 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Keepalive: no commits in $age days"
+            git push
+          fi

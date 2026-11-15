@@ -13,7 +13,8 @@ What gets saved, per URL (file name = URL path with "/" turned into "__"):
   <name>.html.gz  the page as served, gzipped (status 200); ~100 KB a page uncompressed
   <name>.err      a JSON note for a permanent miss (404 or 410), so reruns don't ask again
 Stops, without saving, on 403 or 429 (FLRA refusing us) and after 5 errors in a row of any other
-kind (5xx, timeouts, connection errors). Those pages are retried on the next run.
+kind (5xx, timeouts, connection errors). After a timeout or connection error it waits 30 s,
+then 60, 120, 240 before the next request. Pages that failed are retried on the next run.
 Progress goes to stdout and raw/text_fetch.log.
 """
 import gzip, json, os, sys, time
@@ -32,6 +33,7 @@ PDF_DIR = os.path.join("raw", "text_pdf")
 LOG = os.path.join("raw", "text_fetch.log")
 PAUSE = 2.0
 MAX_ERRORS_IN_A_ROW = 5
+BACKOFF = 30  # seconds after a timeout/connection error, doubling each time in a row (30, 60, 120, 240)
 
 
 def cache_name(url):
@@ -105,6 +107,7 @@ def fetch_all(items, label, limit=None):
             if errors_in_a_row >= MAX_ERRORS_IN_A_ROW:
                 log("STOP: too many errors in a row")
                 sys.exit(2)
+            time.sleep(BACKOFF * 2 ** (errors_in_a_row - 1))  # e.g. the network is still down after the Mac wakes
             continue
         if r.status_code in (403, 429):
             log(f"STOP: {r.status_code} on {u}. FLRA is refusing requests; not retrying.")

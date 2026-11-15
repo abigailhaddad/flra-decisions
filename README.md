@@ -4,6 +4,17 @@ A table of every decision on the Federal Labor Relations Authority's two public 
 
 Metadata and links only (citation, dates, case number, parties, PDF and HTML links). A daily GitHub Action adds new decisions.
 
+## Decision text
+
+`decision_text.parquet` has the text of each decision, one row per row of the two tables, joined by `html_url`. It is built from the decision's HTML page on flra.gov: only the decision body (the page's body field), not the title, navigation or footer. The text is FLRA's, with whitespace tidied (old decisions are laid out with spaces in `<pre>` blocks; that layout is flattened). When a page has no decision body, the text comes from the decision's PDF via `pdftotext`, and `text_status` says `ok_pdf`. Rows with no text say why in `text_status`.
+
+    python src/fetch_text.py          # every decision page -> raw/text_html, one every 2 seconds, resumable
+    python src/fetch_text.py --pdfs   # PDFs for pages with no decision body -> raw/text_pdf
+    python src/build_text.py          # -> out/decision_text.parquet and out/text_report.json
+    python src/check_text.py 30       # live spot-check -> checks/text_sample_<date>.md
+
+The daily job does not add text yet.
+
 ## Run it
 
     pip install -r requirements-dev.txt

@@ -12,7 +12,8 @@ from urllib.parse import unquote, urljoin
 
 BASE = "https://www.flra.gov"
 ROW = re.compile(r'<tr class="(group-[^"]*)"[^>]*>(.*?)</tr>', re.S)
-CELL = re.compile(r'<td[^>]*views-field-([a-z-]+)"[^>]*>\s*<div class="label">[^<]*</div>(.*?)</td>', re.S)
+# [^"]* after the field name: the column the listing is sorted by also carries "is-active".
+CELL = re.compile(r'<td[^>]*views-field-([a-z-]+)[^"]*"[^>]*>\s*<div class="label">[^<]*</div>(.*?)</td>', re.S)
 
 
 def text(fragment):

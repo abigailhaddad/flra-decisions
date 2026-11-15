@@ -1,6 +1,7 @@
 """Fetch FLRA listing pages politely and keep the raw HTML (raw/ is untracked).
 
     python src/crawl.py authority 0 999   # pages first..last, resumable (skips pages already saved)
+    python src/crawl.py authority_old 0 125  # decisions through 1982, past the listing's 10,000-row cap
 
 One request every 2 seconds, honest User-Agent, stops on 403/429 or a non-200.
 """
@@ -9,7 +10,13 @@ import requests
 
 UA = "abigailhaddad-research (github.com/abigailhaddad/flra-decisions)"
 URLS = {"authority": "https://www.flra.gov/decisions/authority-decisions?page={}",
-        "fsip": "https://www.flra.gov/decisions/fsip-decisions?page={}"}
+        "fsip": "https://www.flra.gov/decisions/fsip-decisions?page={}",
+        # The unfiltered listing stops at page 999 (10,000 rows), so the oldest decisions are reached
+        # through the issuance-date filter instead, oldest first. The range overlaps the main crawl on
+        # purpose; build.py drops the repeats by decision page.
+        "authority_old": ("https://www.flra.gov/decisions/authority-decisions?issuance_date_op=between"
+                          "&issuance_date%5Bmin%5D=1900-01-01&issuance_date%5Bmax%5D=1982-12-31"
+                          "&order=issuance_date&sort=asc&page={}")}
 
 
 def main(kind, first, last, pause=2.0):

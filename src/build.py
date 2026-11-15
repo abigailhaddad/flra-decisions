@@ -16,11 +16,16 @@ def read(kind, parser):
     recs, problems, per_page = [], [], {}
     # raw/fsip_asc is a second pass of the same listing sorted the other way. The listing orders ties
     # unstably, so one pass can miss a row and repeat another; the union of both passes is complete.
-    paths = sorted(glob.glob(f"raw/{kind}/*.html")) + sorted(glob.glob(f"raw/{kind}_asc/*.html"))
+    # raw/authority_old holds the oldest decisions, reached through the date filter because the unfiltered
+    # listing stops at 10,000 rows; its pages overlap the main pass and the repeats are dropped below.
+    paths = (sorted(glob.glob(f"raw/{kind}/*.html")) + sorted(glob.glob(f"raw/{kind}_asc/*.html"))
+             + sorted(glob.glob(f"raw/{kind}_old/*.html")))
     for path in paths:
         n = int(os.path.basename(path)[:4])
         if "_asc/" in path:
             n += 1000
+        elif "_old/" in path:
+            n += 2000
         d, p = parser(open(path, encoding="utf-8").read(), n)
         per_page[n] = len(d)
         recs += d

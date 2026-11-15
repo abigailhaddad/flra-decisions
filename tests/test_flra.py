@@ -62,3 +62,12 @@ def test_refresh_merge_keeps_old_and_new_wins():
     new = pd.DataFrame({"html_url": ["b", "c"], "v": [2, 2]})
     m = refresh.merge(old, new).set_index("html_url")
     assert sorted(m.index) == ["a", "b", "c"] and m.loc["b", "v"] == 2
+
+
+def test_date_sorted_page_reads_the_active_column():
+    # Sorted by issuance date, FLRA adds "is-active" to that column's class; the cell pattern used to
+    # require the class to end at the field name, so every date on these pages came back blank.
+    d, p = flra.parse_page(load("auth_date_sorted.html"), 2000)
+    assert len(d) == 10 and p == []
+    assert d[0]["citation"] == "01 FLRA 75" and d[0]["issuance_date"] == "1979-01-23"
+    assert all(r["issuance_date"] for r in d)

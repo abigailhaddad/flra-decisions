@@ -3,7 +3,8 @@
     python src/fetch_text.py            # resumable: skips pages already saved
     python src/fetch_text.py --limit 20 # stop after 20 new requests (for a trial run)
     python src/fetch_text.py --pdfs     # after that: the PDF of each row whose page has no decision
-                                        # body, into raw/text_pdf/ (same pause and stop rules)
+                                        # body, or is in build_text.PAGE_INCOMPLETE or PAGE_WRONG_DECISION, into
+                                        # raw/text_pdf/ (same pause and stop rules)
 
 Reads the html_url column of out/authority_decisions.parquet and out/fsip_decisions.parquet.
 One request every 2 seconds (robots.txt on 2026-11-15 sets no Crawl-delay). Each page is written to
@@ -70,6 +71,7 @@ def html_item(u):
 def pdf_items():
     """PDFs for rows whose saved page has no decision body (needs the page fetch to be finished)."""
     import text as textmod
+    from build_text import PAGE_INCOMPLETE, PAGE_WRONG_DECISION
     a = pd.read_parquet("out/authority_decisions.parquet")
     f = pd.read_parquet("out/fsip_decisions.parquet")
     items = []
@@ -78,7 +80,7 @@ def pdf_items():
         if not isinstance(pdf_url, str) or not os.path.exists(page):
             continue
         status = textmod.extract(gzip.decompress(open(page, "rb").read()).decode("utf-8", "replace"))[0]
-        if status != "ok":
+        if status != "ok" or html_url in PAGE_INCOMPLETE or html_url in PAGE_WRONG_DECISION:
             items.append((pdf_url, os.path.join(PDF_DIR, cache_name(pdf_url)), "", lambda b: b))
     return items
 

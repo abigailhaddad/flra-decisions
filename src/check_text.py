@@ -19,7 +19,7 @@ import pandas as pd
 import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
-from build_text import case_check
+from build_text import case_check, PAGE_WRONG_DECISION
 from fetch_text import UA, PAUSE
 
 SNIP = 120
@@ -49,6 +49,7 @@ def pick(df, n, seed):
     f = pd.read_parquet("out/fsip_decisions.parquet")[["html_url", "issuance_date", "pdf_url"]]
     meta = pd.concat([a, f]).set_index("html_url")
     d = df.join(meta, on="html_url")
+    d["issuance_date"] = pd.to_datetime(d.issuance_date, errors="coerce")
     ok = d[d.text_chars > 0]
     edge = {
         "oldest Authority": d[d.table == "authority"].nsmallest(1, "issuance_date"),
@@ -61,6 +62,7 @@ def pick(df, n, seed):
         "first year with PDFs (2009)": d[d.issuance_date.astype(str).str.startswith("2009")].sample(1, random_state=seed),
         "FSIP random": d[d.table == "fsip"].sample(2, random_state=seed),
         "text from PDF (ok_pdf)": d[d.text_status == "ok_pdf"].sample(min(3, (d.text_status == "ok_pdf").sum()), random_state=seed),
+        "page carried a different decision (text now from PDF)": d[d.html_url.isin(list(PAGE_WRONG_DECISION))].sample(2, random_state=seed),
         "case number not found in text": d[d.html_url.isin(CASE_FAIL)].sample(min(4, len(CASE_FAIL)), random_state=seed),
     }
     for st in sorted(set(d.text_status) - {"ok"}):
@@ -81,11 +83,13 @@ def main(n=30, seed=20261115):
     rows = pick(df, n, seed)
     s = requests.Session()
     s.headers["User-Agent"] = UA
-    out, tally = [], {"start_found": 0, "end_found": 0, "case_found": 0, "checked": 0, "no_text": 0}
+    out, tally = [], {"start_found": 0, "end_found": 0, "case_found": 0, "checked": 0, "no_text": 0, "whole_found": 0}
     for why, r in rows:
         time.sleep(PAUSE)
         src_url = r.html_url if r.text_status != "ok_pdf" else r.pdf_url
         resp = s.get(src_url, timeout=60)
+        if resp.status_code in (403, 429):
+            sys.exit(f"STOP: {resp.status_code} on {src_url}. FLRA is refusing requests; not retrying.")
         key = r.citation if isinstance(r.citation, str) else r.case_number
         out.append(f"### {key} ({r.table}, {r.issuance_date}) — {why}\n")
         out.append(f"- Page: {r.html_url}" + (f"\n- PDF (text source): {r.pdf_url}" if r.text_status == "ok_pdf" else ""))
@@ -104,13 +108,17 @@ def main(n=30, seed=20261115):
         head, tail = ours[:SNIP], ours[-SNIP:]
         i, j = live.find(head), live.rfind(tail)
         cc = case_check(r.table, r.case_number, r.text)
+        nows = lambda x: re.sub(r"\s+", "", x)
+        whole = nows(ours) in nows(live)
         tally["start_found"] += i >= 0
+        tally["whole_found"] += whole
         tally["end_found"] += j >= 0
         tally["case_found"] += cc == "all"
         out.append(f"- Opening, ours: `{head}`")
         out.append(f"- Live, 150 chars before it: `{live[max(0, i - 150):i] if i >= 0 else 'NOT FOUND'}`")
         out.append(f"- Closing, ours: `{tail}`")
         out.append(f"- Live, 150 chars after it: `{live[j + len(tail):j + len(tail) + 150] if j >= 0 else 'NOT FOUND'}`")
+        out.append(f"- Whole text found in live text (all whitespace removed): {whole}")
         out.append(f"- Case number `{r.case_number}` in our text: {cc}\n")
     today = date.today().isoformat()
     hdr = [f"# Decision text spot-check, {today}\n",
@@ -118,9 +126,11 @@ def main(n=30, seed=20261115):
            f"(seed {seed}) plus edge cases, {len(rows)} rows in all.",
            "Second reading: lxml text_content() of the whole live page (no container selection), "
            "or pypdf for PDF-sourced rows. A start/end is 'found' when our first/last "
-           f"{SNIP} characters (whitespace collapsed) appear verbatim in that text.\n",
+           f"{SNIP} characters (whitespace collapsed) appear verbatim in that text. 'Whole text found' "
+           "means our entire text, with all whitespace removed, is a substring of the live text with "
+           "all whitespace removed (catches dropped or added passages in the middle).\n",
            f"Result: of {tally['checked']} rows with text, opening found {tally['start_found']}, "
-           f"closing found {tally['end_found']}, case number found {tally['case_found']}. "
+           f"closing found {tally['end_found']}, whole text found {tally['whole_found']}, case number found {tally['case_found']}. "
            f"Rows with no text: {tally['no_text']}.\n"]
     os.makedirs("checks", exist_ok=True)
     path = f"checks/text_sample_{today}.md"

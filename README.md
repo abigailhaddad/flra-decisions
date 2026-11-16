@@ -4,6 +4,28 @@ A table of every decision on the Federal Labor Relations Authority's two public 
 
 Metadata and links only (citation, dates, case number, parties, PDF and HTML links). A daily GitHub Action adds new decisions.
 
+## Decision text
+
+`decision_text.parquet` has the text of each decision, one row per row of the two tables, joined by `html_url`. It is built from the decision's HTML page on flra.gov: only the decision body (the page's body field), not the title, navigation or footer. The text is FLRA's, with whitespace tidied (old decisions are laid out with spaces in `<pre>` blocks; that layout is flattened). When a page has no decision body, the text comes from the decision's PDF via `pdftotext`, and `text_status` says `ok_pdf`. Rows with no text say why in `text_status`.
+
+`text_status` values (counts as built 2026-11-16):
+
+| value | meaning | Authority | FSIP |
+|---|---|---|---|
+| `ok` | from the HTML page's decision body | 10,420 | 959 |
+| `ok_pdf` | from the PDF: the page has no body, is cut off, or carries a different decision | 36 | 4 |
+| `partial` | the page is cut off or only points to an attachment, and there is no PDF text; `text` is what the page has | 4 | 0 |
+| `empty` | the page is title-only and the PDF is an image scan with no text layer (no OCR) | 2 | 108 |
+
+Pages FLRA serves incorrectly are listed by hand in `src/build_text.py`. `PAGE_INCOMPLETE` covers 7 pages cut off mid-sentence or holding only a pointer. `PAGE_WRONG_DECISION` covers 8 pages that show a different decision; for those, the text comes from the row's PDF and is used only if it contains the row's case number. Many newer FSIP pages (2009 on) leave out the caption, so the case number is only in the PDF. Checks: `checks/text_sample_2026-11-16.md`.
+
+    python src/fetch_text.py          # every decision page -> raw/text_html, one every 2 seconds, resumable
+    python src/fetch_text.py --pdfs   # PDFs for pages with no decision body -> raw/text_pdf
+    python src/build_text.py          # -> out/decision_text.parquet and out/text_report.json
+    python src/check_text.py 30       # live spot-check -> checks/text_sample_<date>.md
+
+The daily job does not add text yet.
+
 ## Run it
 
     pip install -r requirements-dev.txt
